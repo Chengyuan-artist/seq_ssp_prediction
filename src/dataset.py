@@ -13,7 +13,9 @@ class ProteinDataset(Dataset):
     # protein_seqs: list of protein sequences [seq, ssp]
     # train: whether the dataset is for training
     # split_len: when train = True, the split length of the sequence
-    def __init__(self, protein_seqs, train=True, split_len=250):  
+    # transform: True: (20, split_len)
+    #            False: (20 * split_len,)
+    def __init__(self, protein_seqs, train=True, split_len=250, transform=False):  
         self.seqs = [seq['seq'] for seq in protein_seqs]
         self.ssps = [seq['ssp'] for seq in protein_seqs]
         
@@ -24,10 +26,13 @@ class ProteinDataset(Dataset):
                 split_seqs.extend(self.split_seq(seq, split_len))
             for ssp in self.ssps:
                 split_ssps.extend(self.split_seq(ssp, split_len))
-            seqs_tensor = [self.seq_to_onehot(seq, reqular_len=split_len).view(-1) for seq in split_seqs]
+            if transform:
+                seqs_tensor = [self.seq_to_onehot(seq, reqular_len=split_len).T for seq in split_seqs]
+            else:
+                seqs_tensor = [self.seq_to_onehot(seq, reqular_len=split_len).view(-1) for seq in split_seqs]
             ssp_tensor = [self.seq_to_onehot(ssp, is_ssp=True, reqular_len=split_len).view(-1) for ssp in split_ssps]
-            self.seqs = seqs_tensor
-            self.ssps = ssp_tensor
+            self.seqs = torch.stack(seqs_tensor)
+            self.ssps = torch.stack(ssp_tensor)
         
             
     def __len__(self):

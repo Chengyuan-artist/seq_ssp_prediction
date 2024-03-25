@@ -4,8 +4,8 @@ import pandas as pd
 from torch.utils.data import DataLoader, SubsetRandomSampler
 import torch.nn as nn
 import matplotlib.pyplot as plt
-from random import shuffle
-from dataset import ProteinDataset
+from tqdm import tqdm
+from src.dataset import ProteinDataset
 
 # import torch.nn.functional as F
 
@@ -53,15 +53,7 @@ class MLP(nn.Module):
         torch.save(state, save_file)
         del state
 
-    def load_data(self, protein_seqs):
-
-        split = int(0.8 * len(protein_seqs))
-        shuffle(protein_seqs)
-
-        test_data = ProteinDataset(
-            protein_seqs[:split], train=True, split_len=self.split_len
-        )
-        valid_data = ProteinDataset(protein_seqs[split:], train=False)
+    def load_data(self, test_data, valid_data):
 
         self.train_loader = DataLoader(
             test_data, batch_size=self.batch_size, shuffle=True
@@ -71,20 +63,21 @@ class MLP(nn.Module):
         )
 
         
-    def train(self, verbose=False):
+    def train_model(self, verbose=False):
         self = self.to(self.device)
         self.loss_function = nn.CrossEntropyLoss()
         self.optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
 
         self.loss_df = pd.DataFrame(columns=["epoch", "loss"])
 
-        for epoch in range(0, self.epochs):
-            if verbose:
-                print(f"Starting epoch {epoch+1}")
-
+        for epoch in tqdm(range(self.epochs), desc="epoch", leave=False):
+            # if verbose:
+            #     print(f"Starting epoch {epoch+1}")
+            self.train()
+            prog_iter = tqdm(self.train_loader, desc="Training", leave=False)
             current_loss = 0.0
 
-            for i, data in enumerate(self.train_loader, 0):
+            for i, data in enumerate(prog_iter):
                 inputs, targets = data[0].to(self.device), data[1].to(self.device)
                 self.optimizer.zero_grad()
                 outputs = self(inputs)
@@ -147,3 +140,5 @@ class MLP(nn.Module):
     def q3(self, ssp_true, ssp_predicted):
         q3 = sum([1 for i in range(len(ssp_true)) if ssp_true[i] == ssp_predicted[i]]) / len(ssp_true)
         return q3
+    
+# print(ProteinDataset.onehot_to_sequence(torch.tensor([[1, 0, 0], [0, 1, 0], [0, 0, 1]]), is_ssp=True))
