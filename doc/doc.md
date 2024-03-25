@@ -1,5 +1,7 @@
 # 作业1：蛋白质二级结构预测
 
+代码实现：[本仓库](https://github.com/Chengyuan-artist/seq_ssp_prediction)
+
 数据样例：
 
 ```
@@ -30,6 +32,8 @@ N为训练样本数量。
 
 这种方式经过实验后发现模型(mlp和resnet1d)训练后准确率均在39%左右，而且loss曲线没有明确拐点，推测模型处于欠拟合状态。
 
+
+
 思路2：按固定长度切分训练样本，输入输出长度固定为切分长度
 
 split_len 为切分长度
@@ -41,9 +45,69 @@ split_len 为切分长度
 
 本实验采取思路2并取split_len = 20。为了统一的对比标准，MLP和ResNet1d均取相同的split_len。
 
+## 数据处理
+
+为了方便分割序列的数据处理，`src/dataset.py`中实现了一系列方便的处理函数：
+
+```
+def split_seq(seq, split_len = 250):
+```
+
+将字符串序列分割成`split_len`的子字符串
+
+```
+def seq_to_onehot(seq, is_ssp = False, reqular_len = 250):
+```
+
+将字符串转换为形状为(regular_len, 3) 或 (regular_len, 20)的二维one-hot张量
+
+```
+def onehot_to_sequence(one_hot, is_ssp=False):
+```
+
+将one-hot张量转换为序列
+
+```
+def prob_to_onehot(prob):
+```
+
+将网络输出结果（概率张量）转化为one_hot张量
+
 ## 样本划分
 
 本实验仅进行了训练集和验证集划分，在训练开始前将样本进行随机划分为80%训练集，20%验证集。
+
+测试集和验证集数据类型不同。测试集后续需要进行切分，输入输出均为张量。验证集则分别为seq和ssp字符串，在推理时对单个数据进行切分，转化为one-hot张量并叠加后送入网络。
+
+## 网络推理
+
+由于网络输入输出被固定为split_len，因此网络只能预测长度为split_len序列的预测结果。
+
+由于实验需要统计Q3准确率，即每个序列的预测准确率，因此推理需要一次预测一条序列并给出正确率。
+
+```python
+         with torch.no_grad():
+                q3s = []
+                for data in self.valid_loader:
+                    inputs, targets = data[0], data[1]  // A batch of data
+                    for seq, ssp in zip(inputs, targets): // single data (seq, ssp) 
+
+                        split_seq = ProteinDataset.split_seq(seq, self.split_len) // split seq
+                        seq_tensors = [ProteinDataset.seq_to_onehot(seq, reqular_len=self.split_len).view(-1) for seq in split_seq] // transfrom every split seq to one-hot tensor 
+                        input_tensor = torch.stack(seq_tensors) // stack these one-hot tensors
+                        input_tensor = input_tensor.to(self.device)
+                        # print(input_tensor.shape)
+                        output_tensor = self(input_tensor) // put the stacked tensor into the network
+                        # print(output_tensor.shape)
+
+                        one_hot = ProteinDataset.prob_to_onehot(output_tensor.view(-1, 3))
+                        # print(one_hot.shape)
+                        ssp_predicted = ProteinDataset.onehot_to_sequence(one_hot, is_ssp=True)
+                        
+                        // compare ssp with ssp_predicted to cal Q3 acuarrncy
+```
+
+处理方式见上述注释。
 
 ## 结果
 
@@ -66,7 +130,7 @@ output:torch.Size([19050, 60])
 ================================================================
 ```
 
-最后一层softmax对每3个输出做softmax，即每个位置的三个类别预测做softmax。
+两层全连接(hidden取32)，一层ReLu，最后一层softmax对每3个输出做softmax，即每个位置的三个类别预测做softmax。
 
 <img src="images/mlp_loss.png" style="zoom: 80%;" />
 
